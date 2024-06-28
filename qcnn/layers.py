@@ -84,7 +84,7 @@ class QCNNConvolution(QCNNLayer):
         if self.num_wires == 2:
             self.num_weights = self.num_wires * depth
         else:
-            self.num_weights = self.num_wires * depth
+            self.num_weights = 2*self.num_wires * depth
         self.depth = depth
 
         self.out_idx = wire_idx
@@ -105,7 +105,7 @@ class QCNNConvolution(QCNNLayer):
                 [qml.Hadamard(wires = i) for i in self.wire_idx]
                 for i in range(int(s/2)):
                     qml.CZ(wires=[self.wire_idx[i*2 + 1],self.wire_idx[(i*2 + 2)%s]])
-                [qml.RX(w[o + s*(2*d) + i],wires=self.wire_idx[i]) for i in range(s)]
+                [qml.RX(w[o + s*(2*d+1) + i],wires=self.wire_idx[i]) for i in range(s)]
         else:
             for d in range(self.depth):
                 [qml.Hadamard(wires = i) for i in self.wire_idx]
