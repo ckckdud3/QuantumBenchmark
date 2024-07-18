@@ -6,8 +6,9 @@ from scipy.stats import unitary_group
 import matplotlib.pyplot as plt
 
 from .blocks import *
+from .utils.arguments import modelarguments
 
-dev = 'cuda'
+dev = 'cuda:0'
 
 class QCNNSequential:
 
@@ -42,7 +43,7 @@ class QCNNSequential:
         template[-self.num_eval_weights:] = np.random.rand(self.num_eval_weights) - 0.5
         self.w = torch.tensor(template, dtype=torch.float64, requires_grad=True, device=dev)
 
-        self.torch_opt = torch.optim.Adam([self.w], lr=4e-2)
+        self.torch_opt = torch.optim.Adam([self.w], lr=2e-2)
         self.torch_loss = torch.nn.MSELoss()
 
         tmp = 0
@@ -159,3 +160,76 @@ class QCNNSequential:
             
         fim = qml.qinfo.classical_fisher(inner_call)(self.w[:-self.num_eval_weights]).detach().cpu().numpy()
         return fim
+
+
+def scheme_builder(arg: modelarguments):
+
+    scheme_list = ['cyclic', 'cross', 'no_comm', 'full', 'multi']
+
+    assert arg.scheme in scheme_list,'Invalid scheme'
+
+    if arg.scheme == 'full':
+        arg.num_processor = 1
+    else:
+        assert arg.num_processor != 1, 'Invalid number of processor'
+
+    num_block = np.log2(arg.num_wires/arg.num_obs)
+
+    assert num_block == int(num_block), \
+        f'Expected np.log2({arg.num_wires}/{arg.num_obs}) to be integer, got {num_block}'
+    
+    num_block = int(num_block)
+
+
+    assert arg.num_wires % arg.num_processor == 0, 'Number of wire is not divisible by Number of processor'
+    
+    wire_per_processor = int(arg.num_wires / arg.num_processor)
+
+
+    sliced_list = [list(range(i,i+wire_per_processor)) for i in range(0, arg.num_wires, wire_per_processor)]
+
+    block_list = []
+
+    block = QCNNEmbeddingBlock
+    for i in range(len(sliced_list)):
+        block_list.append(block(sliced_list[i], 1))
+
+
+    if arg.scheme == 'cyclic':
+
+        block = QCNNCyclicCrossConvBlock
+
+        for i in range(num_block):
+            block_list.append(block(sliced_list, arg.depth))
+            for j in range(len(sliced_list)):
+                sliced_list[j] = sliced_list[j][1::2]
+
+    elif arg.scheme == 'cross':
+
+        block = QCNNCrossConvBlock
+
+        for i in range(num_block):
+            for j in range(0, len(sliced_list), 2):
+                block_list.append(block(sliced_list[j], sliced_list[j+1], arg.depth))
+            for j in range(len(sliced_list)):
+                sliced_list[j] = sliced_list[j][1::2]
+
+    elif arg.scheme == 'multi':
+        
+        block = QCNNMultiFeedbackCrossConvBlock
+        for i in range(num_block):
+            block_list.append(block(sliced_list, arg.depth))
+            for j in range(len(sliced_list)):
+                sliced_list[j] = sliced_list[j][1::2]
+
+    else:
+        
+        block = QCNNConvPoolBlock
+
+        for i in range(num_block):
+            block_list.append(block(sliced_list[0], arg.depth))
+            for j in range(len(sliced_list)):
+                sliced_list[j] = sliced_list[j][1::2]
+
+    
+    return block_list

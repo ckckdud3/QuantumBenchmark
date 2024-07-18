@@ -1,5 +1,6 @@
 from abc import *
 
+import torch
 import numpy as np
 import pennylane as qml
 
@@ -138,3 +139,36 @@ class QCNNPooling(QCNNLayer):
 
         qml.cond(trigger == 1, qml.RZ)(w[o+2], wires = self.target_idx)
         qml.cond(trigger == 1, qml.RX)(w[o+3], wires = self.target_idx)
+
+
+
+class QCNNMultiFeedbackPooling(QCNNLayer):
+    
+    def __init__(self, measure, target):
+
+        super().__init__(measure+target)
+
+        self.num_weights = 8
+        self.measure_idx_list = measure
+        self.target_idx = target
+        self.out_idx = target
+
+        self.affine_len = len(measure)
+
+        assert self.affine_len == 2, 'Currently supporting 3 processors scheme only'
+
+
+    def __call__(self, w):
+
+        measure_list = []
+        for i in self.measure_idx_list:
+            m = qml.measure(i)
+            measure_list.append(m)
+
+        o = self.weight_offset
+
+        qml.cond(measure_list[0]*w[o] + measure_list[1]*w[o+1] + measure_list[0]*measure_list[1]*w[o+2] + w[o+3] >= 0, qml.RX)(w[o+4], wires = self.target_idx)
+        qml.cond(measure_list[0]*w[o] + measure_list[1]*w[o+1] + measure_list[0]*measure_list[1]*w[o+2] + w[o+3] >= 0, qml.RZ)(w[o+5], wires = self.target_idx)
+
+        qml.cond(measure_list[0]*w[o] + measure_list[1]*w[o+1] + measure_list[0]*measure_list[1]*w[o+2] + w[o+3] < 0, qml.RX)(w[o+6], wires = self.target_idx)
+        qml.cond(measure_list[0]*w[o] + measure_list[1]*w[o+1] + measure_list[0]*measure_list[1]*w[o+2] + w[o+3] < 0, qml.RZ)(w[o+7], wires = self.target_idx)

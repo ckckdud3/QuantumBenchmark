@@ -61,6 +61,8 @@ class QCNNEmbeddingBlock(QCNNBlock):
     def weight_propagator(self):
         pass
 
+
+
 class QCNNConvPoolBlock(QCNNBlock):
 
     def __init__(self, wire_idx: list[int], depth: int):
@@ -229,6 +231,68 @@ class QCNNCyclicCrossConvBlock(QCNNBlock):
 
     def get_num_weights(self):
         return sum([conv.num_weights for conv in self.convs]) + 4*len(self.cyclic_pools)
+    
+
+    def get_wires(self):
+        return self.out_idx
+    
+
+    def weight_propagator(self):
+        
+        tmp = self.integrated_weights_idx
+        
+        for conv in self.convs:
+            conv.weight_offset = tmp
+            tmp += conv.num_weights
+
+        for pool in self.cyclic_pools:
+            pool.weight_offset = tmp
+            tmp += pool.num_weights
+
+
+
+class QCNNMultiFeedbackCrossConvBlock(QCNNBlock):
+    
+    def __init__(self, wire_groups: list[list[int]], depth: int):
+        
+        super().__init__()
+        test_len = len(wire_groups[0])
+        self.wire_idx = []
+        for wires in wire_groups:
+            assert len(wires) == test_len, 'Number of wires not matching'
+            self.wire_idx += wires
+
+        self.w_per_block = test_len
+        
+        assert self.w_per_block % 2 == 0, 'Number of wires per block is not even'
+
+        self.source_indices = [wires[0::2] for wires in wire_groups]
+        self.target_indices = [wires[1::2] for wires in wire_groups]
+
+        self.out_idx = []
+        for t in self.target_indices:
+            self.out_idx += t
+        self.convs = [QCNNConvolution(w, depth) for w in wire_groups]
+
+        self.cyclic_pools: list[QCNNMultiFeedbackPooling] = []
+
+        l = len(self.source_indices)
+        for i, wire_t in enumerate(self.target_indices):
+            self.cyclic_pools.append(QCNNMultiFeedbackPooling(self.source_indices[:i] + self.source_indices[i+1:], wire_t))
+        
+        self.layers = self.convs + self.cyclic_pools
+
+
+    def __call__(self, w):
+
+        for conv in self.convs:
+            conv(w)
+        for pool in self.cyclic_pools:
+            pool(w)
+
+
+    def get_num_weights(self):
+        return sum([conv.num_weights for conv in self.convs]) + 7*len(self.cyclic_pools)
     
 
     def get_wires(self):
