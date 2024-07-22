@@ -1,7 +1,6 @@
 import torch
 import pennylane as qml
 import numpy as np
-from scipy.stats import unitary_group
 
 import matplotlib.pyplot as plt
 

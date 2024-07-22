@@ -118,7 +118,7 @@ class QCNNCrossConvBlock(QCNNBlock):
 
         self.w_per_block = len(upper_wire_idx)
         
-        assert self.w_per_block % 2 == 0, 'Number of wires per block is not even'
+        # assert self.w_per_block % 2 == 0, 'Number of wires per block is not even'
 
         super().__init__()
 
@@ -133,7 +133,14 @@ class QCNNCrossConvBlock(QCNNBlock):
         self.upper_pool_out = self.upper_wire_idx[1::2]
         self.lower_pool_out = self.lower_wire_idx[1::2]
 
-        self.out_idx = self.upper_pool_out + self.lower_pool_out
+        if self.w_per_block != 2:
+            self.upper_pool_measure = self.upper_pool_measure[:-1]
+            self.lower_pool_measure = self.lower_pool_measure[:-1]
+
+        upper_out = set(upper_wire_idx) - set(self.upper_pool_measure)
+        lower_out = set(lower_wire_idx) - set(self.lower_pool_measure)
+
+        self.out_idx = list(upper_out | lower_out)
 
         self.upper_conv = QCNNConvolution(self.upper_wire_idx, depth)
         self.lower_conv = QCNNConvolution(self.lower_wire_idx, depth)
@@ -144,7 +151,6 @@ class QCNNCrossConvBlock(QCNNBlock):
         for i in range(len(self.upper_pool_out)):
             measure_target_tuples_upper.append((self.upper_pool_measure[i], self.lower_pool_out[i]))
             measure_target_tuples_lower.append((self.lower_pool_measure[i], self.upper_pool_out[i]))
-
 
         self.cross_pool = [QCNNPooling(p,t) for (p,t) in measure_target_tuples_upper] \
                         + [QCNNPooling(p,t) for (p,t) in measure_target_tuples_lower]
@@ -166,7 +172,7 @@ class QCNNCrossConvBlock(QCNNBlock):
     
 
     def get_wires(self):
-        return self.upper_pool_out + self.lower_pool_out
+        return self.out_idx
     
 
     def weight_propagator(self):
