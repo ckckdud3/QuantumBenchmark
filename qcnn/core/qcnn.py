@@ -56,7 +56,7 @@ class QCNNSequential:
         return probs @ w[self.eval_offset:]
     
 
-    def draw_circuit(self):
+    def draw_circuit(self, filename):
         
         input_len = 0
         for embed in self.sequential[:self.embedding_blocks]:
@@ -79,7 +79,7 @@ class QCNNSequential:
             return qml.probs(wires=self.out_idx)
         
         fig, ax = qml.draw_mpl(circuit, style='pennylane')()
-        fig.savefig('test1.png')
+        fig.savefig(f'{filename}.png')
         
 
     def get_weights(self):

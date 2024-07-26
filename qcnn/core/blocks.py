@@ -298,7 +298,7 @@ class QCNNMultiFeedbackCrossConvBlock(QCNNBlock):
 
 
     def get_num_weights(self):
-        return sum([conv.num_weights for conv in self.convs]) + 7*len(self.cyclic_pools)
+        return sum([conv.num_weights for conv in self.convs]) + 8*len(self.cyclic_pools)
     
 
     def get_wires(self):
@@ -316,3 +316,7 @@ class QCNNMultiFeedbackCrossConvBlock(QCNNBlock):
         for pool in self.cyclic_pools:
             pool.weight_offset = tmp
             tmp += pool.num_weights
+
+
+
+
