@@ -55,7 +55,7 @@ class QCNNSequential:
         return probs @ w[self.eval_offset:]
     
 
-    def draw_circuit(self, filename):
+    def draw_circuit(self, filename='test'):
         
         input_len = 0
         for embed in self.sequential[:self.embedding_blocks]:
