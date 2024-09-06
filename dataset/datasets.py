@@ -2,12 +2,24 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 from sklearn.decomposition import PCA
+from sklearn.model_selection import train_test_split
 import numpy as np
 
 
-def get_filtered_indices(dataset, labels):
-        indices = [i for i, label in enumerate(dataset.targets) if label in labels]
-        return indices
+def get_filtered_indices(dataset, labels, n):
+        indices, l = [], []
+        for i, label in enumerate(dataset.targets):
+            if label in labels:
+                indices.append(i)
+                l.append(label)
+
+        _, ret = train_test_split(
+            indices,
+            test_size = n,
+            random_state = 42,
+            stratify = l
+        )
+        return ret
 
 
 def dataset_to_numpy(dataset):
@@ -19,7 +31,7 @@ def dataset_to_numpy(dataset):
     return np.array(data), np.array(targets)
 
 
-def get_pca_dataset(n_dim = 20):
+def get_pca_dataset(n_dim, n_train, n_test):
 
     transform = transforms.Compose([transforms.ToTensor()])
 
@@ -27,13 +39,11 @@ def get_pca_dataset(n_dim = 20):
     test_dataset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform)
 
 
-    train_indices = get_filtered_indices(train_dataset, [0, 1])
-    test_indices = get_filtered_indices(test_dataset, [0, 1])
+    train_idx = get_filtered_indices(train_dataset, [0, 1], n_train)
+    test_idx = get_filtered_indices(test_dataset, [0, 1], n_test)
 
-
-    train_subset = torch.utils.data.Subset(train_dataset, train_indices)
-    test_subset = torch.utils.data.Subset(test_dataset, test_indices)
-
+    train_subset = torch.utils.data.Subset(train_dataset, train_idx)
+    test_subset = torch.utils.data.Subset(test_dataset, test_idx)
 
     train_data, train_targets = dataset_to_numpy(train_subset)
     test_data, test_targets = dataset_to_numpy(test_subset)

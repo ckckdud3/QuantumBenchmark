@@ -1,5 +1,6 @@
 import pennylane as qml
 import torch
+from torch.utils.data.dataloader import DataLoader
 import pickle
 import logging
 import time
@@ -11,6 +12,7 @@ from qcnn.core.blocks import *
 from qcnn.core.utils.utils import *
 from qcnn.core.utils.customparser import customparser
 
+from dataset.datasets import get_pca_dataset
 
 # Argument parsing
 parser = argparse.ArgumentParser()
@@ -50,19 +52,9 @@ qcnn = QCNNSequential(block_list, dev, num_wires)
 
 qcnn.draw_circuit()
 
-dataset=None
-with open(dataset_path, 'rb') as f:
-    dataset = pickle.load(f)
-    f.close()
+train_dataset, test_dataset = get_pca_dataset(12)
 
-npdataset = []
-
-for i in range(len(dataset)):
-    npdataset.append(np.array(dataset[i]))
-
-train_x, train_y = dataset_shuffle(npdataset[0], npdataset[1])
-test_x, test_y = dataset_shuffle(npdataset[2], npdataset[3])
-
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 
 outdata = {}
 cost_data = []
@@ -113,7 +105,6 @@ logger.info(f'Training ended. Elapsed time: {days} days {hours} hours {minutes} 
 outdata['scheme'] = parsed_args[0].scheme
 outdata['depth'] = parsed_args[0].depth
 outdata['num_qubit'] = parsed_args[0].num_wires
-outdata['num_processor'] = parsed_args[0].num_processor
 outdata['elapsed_time'] = seconds
 outdata['num_epoch'] = epoch
 outdata['batch_size'] = batch_size
