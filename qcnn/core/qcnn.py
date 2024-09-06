@@ -42,6 +42,7 @@ class QCNNSequential:
         template[-self.num_eval_weights:] = np.random.rand(self.num_eval_weights) - 0.5
         self.w = torch.tensor(template, dtype=torch.float64, requires_grad=True, device=dev)
 
+
         self.torch_opt = torch.optim.Adam([self.w], lr=2e-2)
         self.torch_loss = torch.nn.MSELoss()
 
@@ -123,8 +124,18 @@ class QCNNSequential:
 
             cost = self.torch_loss(eval, labeltensor)
             cost.backward()
+            self.w.grad
             return cost
-        
+
+        labeltensor = torch.tensor(label, dtype=torch.float64).to(dev)
+        datatensor = torch.tensor(data, dtype=torch.float64).to(dev)
+        eval = self(datatensor)
+
+        if not torch.is_same_size(eval, labeltensor):
+            eval = torch.unsqueeze(eval, -1)
+        cost = self.torch_loss(eval, labeltensor)
+        cost.backward()
+
         self.torch_opt.zero_grad()
         loss = self.torch_opt.step(closure).item()
         return loss

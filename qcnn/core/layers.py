@@ -144,7 +144,7 @@ class QCNNPooling(QCNNLayer):
 
 class QCNNMultiFeedbackPooling(QCNNLayer):
     
-    def __init__(self, measure, target):
+    def __init__(self, measure, target, m_list):
 
         super().__init__(measure+target)
 
@@ -152,6 +152,7 @@ class QCNNMultiFeedbackPooling(QCNNLayer):
         self.measure_idx_list = measure
         self.target_idx = target
         self.out_idx = target
+        self.measure_list = m_list
 
         self.affine_len = len(measure)
 
@@ -160,15 +161,56 @@ class QCNNMultiFeedbackPooling(QCNNLayer):
 
     def __call__(self, w):
 
-        measure_list = []
-        for i in self.measure_idx_list:
-            m = qml.measure(i)
-            measure_list.append(m)
-
         o = self.weight_offset
 
-        qml.cond(measure_list[0]*w[o] + measure_list[1]*w[o+1] + measure_list[0]*measure_list[1]*w[o+2] + w[o+3] >= 0, qml.RX)(w[o+4], wires = self.target_idx)
-        qml.cond(measure_list[0]*w[o] + measure_list[1]*w[o+1] + measure_list[0]*measure_list[1]*w[o+2] + w[o+3] >= 0, qml.RZ)(w[o+5], wires = self.target_idx)
+        qml.cond(self.measure_list[0]*w[o] + self.measure_list[1]*w[o+1] + self.measure_list[0]*self.measure_list[1]*w[o+2] + w[o+3] >= 0, qml.RX)(w[o+4], wires = self.target_idx)
+        qml.cond(self.measure_list[0]*w[o] + self.measure_list[1]*w[o+1] + self.measure_list[0]*self.measure_list[1]*w[o+2] + w[o+3] >= 0, qml.RZ)(w[o+5], wires = self.target_idx)
 
-        qml.cond(measure_list[0]*w[o] + measure_list[1]*w[o+1] + measure_list[0]*measure_list[1]*w[o+2] + w[o+3] < 0, qml.RX)(w[o+6], wires = self.target_idx)
-        qml.cond(measure_list[0]*w[o] + measure_list[1]*w[o+1] + measure_list[0]*measure_list[1]*w[o+2] + w[o+3] < 0, qml.RZ)(w[o+7], wires = self.target_idx)
+        qml.cond(self.measure_list[0]*w[o] + self.measure_list[1]*w[o+1] + self.measure_list[0]*self.measure_list[1]*w[o+2] + w[o+3] < 0, qml.RX)(w[o+6], wires = self.target_idx)
+        qml.cond(self.measure_list[0]*w[o] + self.measure_list[1]*w[o+1] + self.measure_list[0]*self.measure_list[1]*w[o+2] + w[o+3] < 0, qml.RZ)(w[o+7], wires = self.target_idx)
+
+
+
+class QCNNRevisedMultiFeedbackPooling(QCNNLayer):
+
+    def __init__(self, wire_list):
+        
+        self.num_weights = 8
+        self.wire_list = wire_list
+        self.num_p = len(wire_list)
+        self.wires_per_p = len(wire_list[0])
+        
+        for i in wire_list[1:]:
+            assert len(i) == self.wires_per_p, 'Number of wires not Matching'
+
+        self.source_indices = [wire[0::2] for wire in self.wire_list]
+        self.target_indices = [wire[1::2] for wire in self.wire_list]
+        
+        self.out_idx = []
+        for t in self.target_indices:
+            self.out_idx += t
+
+        self.measure_pair = len(self.source_indices[0])
+
+
+    def __call__(self, w):
+
+        measure_list = []
+
+        o = self.weight_offset
+        num_p = self.num_p
+
+        for i in range(self.num_p):
+           measure_list.append([qml.measure(j) for j in self.source_indices[i]])
+        
+        for l in range(self.measure_pair):
+            for i in range(self.num_p):
+                qml.cond(measure_list[i][l]*w[o] + measure_list[(i+1)%num_p][l]*w[o+1] + \
+                         measure_list[i][l]*w[o]*measure_list[(i+1)%num_p][l]*w[o+2] + w[o+3] >= 0, qml.RX)(w[o+4], wires = self.target_indices[(i+2)%num_p][l])
+                qml.cond(measure_list[i][l]*w[o] + measure_list[(i+1)%num_p][l]*w[o+1] + \
+                         measure_list[i][l]*w[o]*measure_list[(i+1)%num_p][l]*w[o+2] + w[o+3] >= 0, qml.RZ)(w[o+5], wires = self.target_indices[(i+2)%num_p][l])
+                qml.cond(measure_list[i][l]*w[o] + measure_list[(i+1)%num_p][l]*w[o+1] + \
+                         measure_list[i][l]*w[o]*measure_list[(i+1)%num_p][l]*w[o+2] + w[o+3] >= 0, qml.RX)(w[o+6], wires = self.target_indices[(i+2)%num_p][l])
+                qml.cond(measure_list[i][l]*w[o] + measure_list[(i+1)%num_p][l]*w[o+1] + \
+                         measure_list[i][l]*w[o]*measure_list[(i+1)%num_p][l]*w[o+2] + w[o+3] >= 0, qml.RZ)(w[o+7], wires = self.target_indices[(i+2)%num_p][l])
+        

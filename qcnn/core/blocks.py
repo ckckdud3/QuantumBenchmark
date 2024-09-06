@@ -280,13 +280,7 @@ class QCNNMultiFeedbackCrossConvBlock(QCNNBlock):
             self.out_idx += t
         self.convs = [QCNNConvolution(w, depth) for w in wire_groups]
 
-        self.cyclic_pools: list[QCNNMultiFeedbackPooling] = []
-
-        l = len(self.source_indices)
-        for i, wire_t in enumerate(self.target_indices):
-            self.cyclic_pools.append(QCNNMultiFeedbackPooling(self.source_indices[:i] + self.source_indices[i+1:], wire_t))
-        
-        self.layers = self.convs + self.cyclic_pools
+        self.cyclic_pools = [QCNNRevisedMultiFeedbackPooling(wire_groups)]
 
 
     def __call__(self, w):
