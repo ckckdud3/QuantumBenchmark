@@ -2,7 +2,7 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import Subset
-from torch.utils.data.dataset import Dataset
+from torch.utils.data.dataset import TensorDataset
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 import numpy as np
@@ -62,7 +62,7 @@ def get_pca_dataset(n_dim, n_train, n_test):
     test_targets = torch.tensor(test_targets, dtype=torch.long)
 
 
-    train_dataset_pca = Dataset(train_data_pca, train_targets)
-    test_dataset_pca = Dataset(test_data_pca, test_targets)
+    train_dataset_pca = TensorDataset(train_data_pca, train_targets)
+    test_dataset_pca = TensorDataset(test_data_pca, test_targets)
 
     return train_dataset_pca, test_dataset_pca
