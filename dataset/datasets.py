@@ -1,6 +1,7 @@
 import torch
 import torchvision
 import torchvision.transforms as transforms
+from torch.utils.data import Subset
 from torch.utils.data.dataset import Dataset
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
@@ -43,8 +44,8 @@ def get_pca_dataset(n_dim, n_train, n_test):
     train_idx = get_filtered_indices(train_dataset, [0, 1], n_train)
     test_idx = get_filtered_indices(test_dataset, [0, 1], n_test)
 
-    train_subset = torch.utils.data.Subset(train_dataset, train_idx)
-    test_subset = torch.utils.data.Subset(test_dataset, test_idx)
+    train_subset = Subset(train_dataset, train_idx)
+    test_subset = Subset(test_dataset, test_idx)
 
     train_data, train_targets = dataset_to_numpy(train_subset)
     test_data, test_targets = dataset_to_numpy(test_subset)
