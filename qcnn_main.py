@@ -55,6 +55,8 @@ qcnn = QCNNSequential(block_list, dev, num_wires, out_dim)
 
 qcnn.draw_circuit(save_to)
 
+print(len(qcnn.get_weights()))
+
 train_dataset, test_dataset = get_pca_dataset(data_dim, train_size, test_size)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -114,6 +116,7 @@ outdata['batch_size'] = batch_size
 outdata['cost_data'] = cost_data
 outdata['accuracy_per_epoch'] = accuracy_per_epoch
 outdata['parameters'] = qcnn.get_weights()
+outdata['num_parameters'] = len(qcnn.get_weights())
 
 
 logger.info('Test started')

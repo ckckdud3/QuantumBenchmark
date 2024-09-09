@@ -9,6 +9,24 @@ from .utils.arguments import modelarguments
 
 dev = 'cuda:0'
 
+pi = np.pi
+
+def set_norm(x, target_norm):
+    # x의 배치 차원 (여기서는 dim=0)을 기준으로 각 항목의 L2 노름을 계산
+    norms = torch.norm(x, p=2, dim=1, keepdim=True)
+    
+    # 각 항목의 L2 노름이 0일 경우 처리 (0으로 나누기 방지)
+    norms = torch.clamp(norms, min=1e-8)
+    
+    # 스케일 비율 계산
+    scale_factor = target_norm / norms
+    
+    # 스케일 조정
+    x_normalized = x * scale_factor
+    
+    return x_normalized
+
+
 class QCNNSequential:
 
     def __init__(self, block_sequence: list[QCNNBlock], device, num_wires, out_dim):
@@ -44,7 +62,7 @@ class QCNNSequential:
         self.w = torch.tensor(template, dtype=torch.float64, requires_grad=True, device=dev)
 
 
-        self.torch_opt = torch.optim.Adam([self.w], lr=2e-2)
+        self.torch_opt = torch.optim.Adam([self.w], lr=1e-1)
         self.torch_loss = torch.nn.CrossEntropyLoss()
 
         tmp = 0
@@ -93,7 +111,8 @@ class QCNNSequential:
 
 
     def __call__(self, data):
-
+        
+        data = set_norm(data, 2*pi)
         @qml.qnode(self.dev, interface='torch')
         def inner_call():
             
@@ -164,7 +183,7 @@ class QCNNSequential:
 
 def scheme_builder(arg: modelarguments, data_dim):
 
-    scheme_list = ['cyclic', 'cross', 'no_comm', 'full', 'multi']
+    scheme_list = ['cyclic', 'cross', 'no_comm', 'full']
 
     assert arg.scheme in scheme_list,'Invalid scheme'
 
@@ -200,8 +219,17 @@ def scheme_builder(arg: modelarguments, data_dim):
         for i in range(len(sliced_list)):
             block_list.append(block(sliced_list[i], 1))
 
+    if arg.scheme == 'no_comm':
 
-    if arg.scheme == 'cyclic':
+        block = QCNNConvPoolBlock
+        
+        for i in range(num_block):
+            for j in range(len(sliced_list)):
+                block_list.append(block(sliced_list[j], arg.depth))
+            for j in range(len(sliced_list)):
+                sliced_list[j] = sliced_list[j][1::2]
+
+    elif arg.scheme == 'cyclic':
 
         block = QCNNCyclicCrossConvBlock
 

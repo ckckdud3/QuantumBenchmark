@@ -42,7 +42,7 @@ class Net(nn.Module):
         return self.fc2(logits)
 
 
-net = Net(12, 6, 2).to(device)
+net = Net(12, 16, 2).to(device)
 
 train_dataset, test_dataset = get_pca_dataset(data_dim, train_size, test_size)
 
@@ -51,6 +51,8 @@ test_loader = DataLoader(test_dataset, batch_size=test_size, shuffle=False)
 
 
 criterion = nn.CrossEntropyLoss()
+
+print(sum(p.numel() for p in net.parameters() if p.requires_grad))
 
 opt = torch.optim.Adam(net.parameters(), lr=1e-3)
 
@@ -110,6 +112,7 @@ outdata['num_epoch'] = epoch
 outdata['batch_size'] = batch_size
 outdata['cost_data'] = cost_data
 outdata['accuracy_per_epoch'] = accuracy_per_epoch
+outdata['num_parameters'] = sum(p.numel() for p in net.parameters() if p.requires_grad)
 
 logger.info('Test started')
 
