@@ -1,2 +1,5 @@
 __pycache__
-dataset/data
+data
+*.png
+*.log
+*.pickle
