@@ -11,7 +11,7 @@ dev = 'cuda:0'
 
 class QCNNSequential:
 
-    def __init__(self, block_sequence: list[QCNNBlock], device, num_wires):
+    def __init__(self, block_sequence: list[QCNNBlock], device, num_wires, out_dim):
 
         if not isinstance(block_sequence[0], QCNNEmbeddingBlock):
             raise TypeError('First block must be EmbeddingBlock')
@@ -20,6 +20,7 @@ class QCNNSequential:
         self.dev = device
         self.out_idx = set([i for i in range(num_wires)])
         self.num_wires = num_wires
+        self.out_dim = out_dim
 
         self.embedding_blocks = 0
 
@@ -35,7 +36,7 @@ class QCNNSequential:
         
         self.out_idx = list(self.out_idx)
         self.num_eval_weights = 2**len(self.out_idx)
-        self.num_integrated_weights = tmp + self.num_eval_weights
+        self.num_integrated_weights = tmp + self.num_eval_weights*out_dim
         self.eval_offset = tmp
 
         template = 2*pi*(np.random.rand(self.num_integrated_weights) - 0.5)
@@ -44,7 +45,7 @@ class QCNNSequential:
 
 
         self.torch_opt = torch.optim.Adam([self.w], lr=2e-2)
-        self.torch_loss = torch.nn.MSELoss()
+        self.torch_loss = torch.nn.CrossEntropyLoss()
 
         tmp = 0
         for block in block_sequence[self.embedding_blocks:]:
@@ -54,7 +55,7 @@ class QCNNSequential:
     
 
     def evaluator(self, probs, w):
-        return probs @ w[self.eval_offset:]
+        return probs @ w[self.eval_offset:].reshape(-1,self.out_dim)
     
 
     def draw_circuit(self, filename='test'):
@@ -114,28 +115,17 @@ class QCNNSequential:
     def step(self, data, label):
 
         def closure():
-            labeltensor = torch.tensor(label, dtype=torch.float64).to(dev)
-            datatensor = torch.tensor(data, dtype=torch.float64).to(dev)
             self.torch_opt.zero_grad()
-            eval = self(datatensor)
+            eval = self(data)
 
-            if not torch.is_same_size(eval, labeltensor):
+            if not torch.is_same_size(eval, label):
                 eval = torch.unsqueeze(eval, -1)
 
-            cost = self.torch_loss(eval, labeltensor)
+            cost = self.torch_loss(eval, label.reshape(-1,1))
             cost.backward()
-            self.w.grad
+
             return cost
-
-        labeltensor = torch.tensor(label, dtype=torch.float64).to(dev)
-        datatensor = torch.tensor(data, dtype=torch.float64).to(dev)
-        eval = self(datatensor)
-
-        if not torch.is_same_size(eval, labeltensor):
-            eval = torch.unsqueeze(eval, -1)
-        cost = self.torch_loss(eval, labeltensor)
-        cost.backward()
-
+        
         self.torch_opt.zero_grad()
         loss = self.torch_opt.step(closure).item()
         return loss
@@ -172,7 +162,7 @@ class QCNNSequential:
         return fim
 
 
-def scheme_builder(arg: modelarguments):
+def scheme_builder(arg: modelarguments, data_dim):
 
     scheme_list = ['cyclic', 'cross', 'no_comm', 'full', 'multi']
 
@@ -201,8 +191,14 @@ def scheme_builder(arg: modelarguments):
     block_list = []
 
     block = QCNNEmbeddingBlock
-    for i in range(len(sliced_list)):
-        block_list.append(block(sliced_list[i], 1))
+
+    embed_per_p = data_dim/(arg.num_wires)
+    
+    assert embed_per_p == int(embed_per_p), 'invalid data dimension'
+
+    for _ in range(int(embed_per_p)):
+        for i in range(len(sliced_list)):
+            block_list.append(block(sliced_list[i], 1))
 
 
     if arg.scheme == 'cyclic':

@@ -9,6 +9,7 @@ import numpy as np
 
 
 def get_filtered_indices(dataset, labels, n):
+        
         indices, l = [], []
         for i, label in enumerate(dataset.targets):
             if label in labels:
@@ -21,15 +22,19 @@ def get_filtered_indices(dataset, labels, n):
             random_state = 42,
             stratify = l
         )
+
         return ret
 
 
 def dataset_to_numpy(dataset):
+
     data = []
     targets = []
+
     for img, target in dataset:
         data.append(img.numpy().flatten())
         targets.append(target)
+
     return np.array(data), np.array(targets)
 
 
@@ -56,9 +61,9 @@ def get_pca_dataset(n_dim, n_train, n_test):
     test_data_pca = pca.transform(test_data)
 
 
-    train_data_pca = torch.tensor(train_data_pca, dtype=torch.float32)
+    train_data_pca = torch.tensor(train_data_pca, dtype=torch.float64)
     train_targets = torch.tensor(train_targets, dtype=torch.long)
-    test_data_pca = torch.tensor(test_data_pca, dtype=torch.float32)
+    test_data_pca = torch.tensor(test_data_pca, dtype=torch.float64)
     test_targets = torch.tensor(test_targets, dtype=torch.long)
 
 

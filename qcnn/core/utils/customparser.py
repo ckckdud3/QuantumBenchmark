@@ -15,7 +15,8 @@ class customparser:
                                num_wires           = self.arg['num_wires'], \
                                depth               = self.arg['depth'], \
                                num_obs             = self.arg['num_obs'], \
-                               num_processor       = self.arg['num_processor']),
+                               num_processor       = self.arg['num_processor'], \
+                               out_dim             = self.arg['out_dim']),
 
                 trainarguments(batch_size        = self.arg['batch_size'], \
                                num_epoch         = self.arg['num_epoch'],

@@ -7,7 +7,8 @@ class modelarguments:
     num_wires:           int
     depth:               int
     num_obs:             int
-    num_processor: int
+    num_processor:       int
+    out_dim:             int
 
 @dataclass
 class trainarguments:

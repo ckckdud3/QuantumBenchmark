@@ -149,7 +149,7 @@ class QCNNCrossConvBlock(QCNNBlock):
 
         measure_target_tuples_upper = []
         measure_target_tuples_lower = []
-
+        
         for i in range(len(self.upper_pool_out)):
             measure_target_tuples_upper.append((self.upper_pool_measure[i], self.lower_pool_out[i]))
             measure_target_tuples_lower.append((self.lower_pool_measure[i], self.upper_pool_out[i]))
