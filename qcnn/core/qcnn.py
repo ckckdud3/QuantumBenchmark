@@ -219,15 +219,7 @@ def scheme_builder(arg: modelarguments, data_dim):
                 block_list.append(block(sliced_list[j], sliced_list[j+1], arg.depth))
             for j in range(len(sliced_list)):
                 sliced_list[j] = sliced_list[j][1::2]
-
-    elif arg.scheme == 'multi':
-        
-        block = QCNNMultiFeedbackCrossConvBlock
-        for i in range(num_block):
-            block_list.append(block(sliced_list, arg.depth))
-            for j in range(len(sliced_list)):
-                sliced_list[j] = sliced_list[j][1::2]
-
+                
     else:
         
         block = QCNNConvPoolBlock
