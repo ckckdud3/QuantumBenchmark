@@ -11,39 +11,24 @@ dev = 'cuda:0'
 
 pi = np.pi
 
-def set_norm(x, target_norm):
-    # x의 배치 차원 (여기서는 dim=0)을 기준으로 각 항목의 L2 노름을 계산
-    norms = torch.norm(x, p=2, dim=1, keepdim=True)
-    
-    # 각 항목의 L2 노름이 0일 경우 처리 (0으로 나누기 방지)
-    norms = torch.clamp(norms, min=1e-8)
-    
-    # 스케일 비율 계산
-    scale_factor = target_norm / norms
-    
-    # 스케일 조정
-    x_normalized = x * scale_factor
-    
-    return x_normalized
-
-
 class QCNNSequential:
 
-    def __init__(self, block_sequence: list[QCNNBlock], device, num_wires, out_dim):
+    def __init__(self, block_sequence: list[QCNNBlock], device, args:modelarguments):
 
-        if not isinstance(block_sequence[0], QCNNEmbeddingBlock):
+        if not block_sequence[0].embedding:
             raise TypeError('First block must be EmbeddingBlock')
 
         self.sequential = block_sequence
+        self.args = args
         self.dev = device
-        self.out_idx = set([i for i in range(num_wires)])
-        self.num_wires = num_wires
-        self.out_dim = out_dim
+        self.out_idx = set([i for i in range(args.num_wires)])
+        self.num_wires = args.num_wires
+        self.out_dim = args.out_dim
 
         self.embedding_blocks = 0
 
         for block in block_sequence:
-            if isinstance(block, QCNNEmbeddingBlock):
+            if block.embedding:
                 self.embedding_blocks += 1
             else: break
 
@@ -54,7 +39,7 @@ class QCNNSequential:
         
         self.out_idx = list(self.out_idx)
         self.num_eval_weights = 2**len(self.out_idx)
-        self.num_integrated_weights = tmp + self.num_eval_weights*out_dim
+        self.num_integrated_weights = tmp + self.num_eval_weights*self.out_dim
         self.eval_offset = tmp
 
         template = 2*pi*(np.random.rand(self.num_integrated_weights) - 0.5)
@@ -62,7 +47,7 @@ class QCNNSequential:
         self.w = torch.tensor(template, dtype=torch.float64, requires_grad=True, device=dev)
 
 
-        self.torch_opt = torch.optim.Adam([self.w], lr=1e-1)
+        self.torch_opt = torch.optim.Adam([self.w], lr=3e-2)
         self.torch_loss = torch.nn.CrossEntropyLoss()
 
         tmp = 0
@@ -80,15 +65,15 @@ class QCNNSequential:
         
         input_len = 0
         for embed in self.sequential[:self.embedding_blocks]:
-            input_len += embed.num_wires * embed.depth
-        
+            input_len += embed.get_num_weights()
+
         randinput = torch.tensor(np.random.rand(input_len).reshape(1,-1), requires_grad=False).to(dev)
         
         @qml.qnode(self.dev)
         def circuit():
             pivot = 0
             for embed in self.sequential[:self.embedding_blocks]:
-                w = embed.num_wires*embed.depth
+                w = embed.get_num_weights()
                 embed(randinput[:,pivot:pivot+w])
                 pivot += w
 
@@ -112,42 +97,47 @@ class QCNNSequential:
 
     def __call__(self, data):
         
-        data = set_norm(data, 2*pi)
         @qml.qnode(self.dev, interface='torch')
         def inner_call():
             
             pivot = 0
             for embedding in self.sequential[:self.embedding_blocks]:
+
                 num_w = embedding.get_num_weights()
                 embedding(data[:,pivot:pivot+num_w])
                 pivot += num_w
 
+
             for block in self.sequential[self.embedding_blocks:]:
                 block(self.w)
             return qml.probs(wires=self.out_idx)
-            
+
+        if self.args.embed_type == 'amp' and self.args.num_processor > 1:
+            tr = qml.transforms.broadcast_expand(inner_call)
+            probs = tr()
+            eval = self.evaluator(probs,self.w)
+            return eval
+
         probs = inner_call()
         eval = self.evaluator(probs,self.w)
         return eval
     
 
     def step(self, data, label):
-
-        def closure():
-            self.torch_opt.zero_grad()
-            eval = self(data)
-
-            if not torch.is_same_size(eval, label):
-                eval = torch.unsqueeze(eval, -1)
-
-            cost = self.torch_loss(eval, label.reshape(-1,1))
-            cost.backward()
-
-            return cost
         
         self.torch_opt.zero_grad()
-        loss = self.torch_opt.step(closure).item()
-        return loss
+        eval = self(data)
+
+        if not torch.is_same_size(eval, label):
+            eval = torch.unsqueeze(eval, -1)
+
+        cost = self.torch_loss(eval, label.reshape(-1,1))
+        cost.backward()
+        self.torch_opt.step()
+
+        var = torch.var(self.w.grad).item()
+        norm = torch.norm(self.w.grad, 2.0).item()
+        return cost.item(), var, norm
     
 
     def init_params(self):
@@ -184,13 +174,18 @@ class QCNNSequential:
 def scheme_builder(arg: modelarguments, data_dim):
 
     scheme_list = ['cyclic', 'cross', 'no_comm', 'full']
+    embed_type = ['amp', 'angle', 'zz']
+    block_type = ['conv', 'twolocal']
 
-    assert arg.scheme in scheme_list,'Invalid scheme'
+    assert arg.scheme in scheme_list, 'Invalid scheme'
+    assert arg.block_type in block_type, 'Invalid block type'
+    assert arg.embed_type in embed_type, 'Invalid embed type'
 
     if arg.scheme == 'full':
         arg.num_processor = 1
     else:
         assert arg.num_processor != 1, 'Invalid number of processor'
+
 
     num_block = np.log2(arg.num_wires/arg.num_obs)
 
@@ -209,53 +204,118 @@ def scheme_builder(arg: modelarguments, data_dim):
 
     block_list = []
 
-    block = QCNNEmbeddingBlock
+    if arg.embed_type == 'angle':
 
-    embed_per_p = data_dim/(arg.num_wires)
+        block = AngleEmbeddingBlock
+
+        embed_per_p = data_dim/(arg.num_wires)
+        
+        assert embed_per_p == int(embed_per_p), 'invalid data dimension'
+
+        for _ in range(int(embed_per_p)):
+            for l in sliced_list:
+                block_list.append(block(l, 1))
     
-    assert embed_per_p == int(embed_per_p), 'invalid data dimension'
+    elif arg.embed_type == 'zz':
 
-    for _ in range(int(embed_per_p)):
-        for i in range(len(sliced_list)):
-            block_list.append(block(sliced_list[i], 1))
+        block = ZZFeatureMapEmbeddingBlock
 
-    if arg.scheme == 'no_comm':
-
-        block = QCNNConvPoolBlock
+        embed_per_p = data_dim/(arg.num_wires)
         
-        for i in range(num_block):
-            for j in range(len(sliced_list)):
-                block_list.append(block(sliced_list[j], arg.depth))
-            for j in range(len(sliced_list)):
-                sliced_list[j] = sliced_list[j][1::2]
+        assert embed_per_p == int(embed_per_p), 'invalid data dimension'
 
-    elif arg.scheme == 'cyclic':
+        for _ in range(int(embed_per_p)):
+            for l in sliced_list:
+                block_list.append(block(l, 1))
 
-        block = QCNNCyclicCrossConvBlock
-
-        for i in range(num_block):
-            block_list.append(block(sliced_list, arg.depth))
-            for j in range(len(sliced_list)):
-                sliced_list[j] = sliced_list[j][1::2]
-
-    elif arg.scheme == 'cross':
-
-        block = QCNNCrossConvBlock
-
-        for i in range(num_block):
-            for j in range(0, len(sliced_list), 2):
-                block_list.append(block(sliced_list[j], sliced_list[j+1], arg.depth))
-            for j in range(len(sliced_list)):
-                sliced_list[j] = sliced_list[j][1::2]
-                
     else:
-        
-        block = QCNNConvPoolBlock
 
-        for i in range(num_block):
-            block_list.append(block(sliced_list[0], arg.depth))
-            for j in range(len(sliced_list)):
-                sliced_list[j] = sliced_list[j][1::2]
+        block = AmplitudeEmbeddingBlock
+
+        assert arg.num_processor*(2**wire_per_processor) == data_dim, 'invalid data dimension'
+
+        for l in sliced_list:
+            block_list.append(block(l))
+
+    if arg.block_type == 'conv':
+
+        if arg.scheme == 'no_comm':
+
+            block = QCNNConvPoolBlock
+            
+            for i in range(num_block):
+                for j in range(len(sliced_list)):
+                    block_list.append(block(sliced_list[j], arg.depth))
+                for j in range(len(sliced_list)):
+                    sliced_list[j] = sliced_list[j][1::2]
+
+        elif arg.scheme == 'cyclic':
+
+            block = QCNNCyclicCrossConvBlock
+
+            for i in range(num_block):
+                block_list.append(block(sliced_list, arg.depth))
+                for j in range(len(sliced_list)):
+                    sliced_list[j] = sliced_list[j][1::2]
+
+        elif arg.scheme == 'cross':
+
+            block = QCNNCrossConvBlock
+
+            for i in range(num_block):
+                for j in range(0, len(sliced_list), 2):
+                    block_list.append(block(sliced_list[j], sliced_list[j+1], arg.depth))
+                for j in range(len(sliced_list)):
+                    sliced_list[j] = sliced_list[j][1::2]
+                    
+        else:
+            
+            block = QCNNConvPoolBlock
+
+            for i in range(num_block):
+                block_list.append(block(sliced_list[0], arg.depth))
+                for j in range(len(sliced_list)):
+                    sliced_list[j] = sliced_list[j][1::2]
+
+    else:
+
+        if arg.scheme == 'no_comm':
+
+            block = QCNNTwoLocalBlock
+            
+            for i in range(num_block):
+                for j in range(len(sliced_list)):
+                    block_list.append(block(sliced_list[j], arg.depth))
+                for j in range(len(sliced_list)):
+                    sliced_list[j] = sliced_list[j][1::2]
+
+        elif arg.scheme == 'cyclic':
+
+            block = QCNNCyclicTwoLocalBlock
+
+            for i in range(num_block):
+                block_list.append(block(sliced_list, arg.depth))
+                for j in range(len(sliced_list)):
+                    sliced_list[j] = sliced_list[j][1::2]
+
+        elif arg.scheme == 'cross':
+
+            block = QCNNCrossTwoLocalBlock
+
+            for i in range(num_block):
+                for j in range(0, len(sliced_list), 2):
+                    block_list.append(block(sliced_list[j], sliced_list[j+1], arg.depth))
+                for j in range(len(sliced_list)):
+                    sliced_list[j] = sliced_list[j][1::2]
+                    
+        else:
+            
+            block = QCNNTwoLocalBlock
+
+            for i in range(num_block):
+                block_list.append(block(sliced_list[0], arg.depth))
+                for j in range(len(sliced_list)):
+                    sliced_list[j] = sliced_list[j][1::2]
 
     
     return block_list

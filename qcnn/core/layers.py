@@ -115,6 +115,38 @@ class QCNNConvolution(QCNNLayer):
                 [qml.RX(w[o + s*d + i], wires = self.wire_idx[i]) for i in range(s)]
 
 
+class TwoLocalAnsatz(QCNNLayer):
+
+    def __init__(self, wire_idx: list[int], depth: int):
+
+        super().__init__(wire_idx)
+
+        self.num_weights = None
+
+        self.num_weights = 2*self.num_wires*depth
+
+        self.depth = depth
+
+        self.out_idx = wire_idx
+
+
+    def __call__(self, w):
+
+        s = self.num_wires
+        o = self.weight_offset
+
+        for d in range(self.depth):
+
+            for i, wire in enumerate(self.wire_idx):
+                
+                qml.RY(w[o+2*s+2*i], wires=wire)
+                qml.RZ(w[o+2*s+2*i+1], wires=wire)
+            
+            for i in range(len(self.wire_idx)-1):
+                
+                qml.CNOT([self.wire_idx[i],self.wire_idx[i+1]])
+
+
 
 class QCNNPooling(QCNNLayer):
 

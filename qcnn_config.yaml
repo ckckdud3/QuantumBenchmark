@@ -1,14 +1,16 @@
-num_wires: 12
-depth: 6
-scheme: 'cyclic'
-num_processor: 3
-num_obs: 3
+num_wires: 4
+depth: 3
+scheme: 'full'
+embed_type: 'zz'
+block_type: 'conv'
+num_processor: 1
+num_obs: 1
 out_dim: 2
 
-batch_size: 500
-num_epoch: 30
+batch_size: 250
+data_dim: 4
+num_epoch: 50
 shuffle_per_epoch: true
 
-dataset_path: './Dataset_12dim_large'
-save_to: 'scheme_12cyclic'
-
+dataset_path: ' '
+save_to: './test'

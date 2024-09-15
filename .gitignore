@@ -3,3 +3,5 @@ data
 *.png
 *.log
 *.pickle
+testscript.py
+*.yaml
