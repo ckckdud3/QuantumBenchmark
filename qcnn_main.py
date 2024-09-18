@@ -23,7 +23,7 @@ train_size = 2000
 val_size = 500
 test_size = 500
 
-custom_path = False
+custom_path = True
 
 custom_parser = customparser(arg.config_file_name)    
 parsed_args = custom_parser.parse_custom_args()
@@ -57,7 +57,7 @@ block_list = scheme_builder(parsed_args[0], data_dim)
 
 qcnn = QCNNSequential(block_list, dev, parsed_args[0])
 
-qcnn.draw_circuit(filename)
+#qcnn.draw_circuit(filename)
 
 train_dataset, val_dataset, test_dataset = get_pca_dataset(data_dim, train_size, val_size, test_size)
 

@@ -1,14 +1,14 @@
 num_wires: 4
 depth: 3
-scheme: 'full'
-embed_type: 'zz'
+scheme: 'cross'
+embed_type: 'amp'
 block_type: 'conv'
-num_processor: 1
-num_obs: 1
+num_processor: 2
+num_obs: 2
 out_dim: 2
 
-batch_size: 250
-data_dim: 4
+batch_size: 500
+data_dim: 8
 num_epoch: 50
 shuffle_per_epoch: true
 
